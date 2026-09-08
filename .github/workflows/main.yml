@@ -149,17 +149,6 @@ jobs:
 
 
       # ----------------------------------------------------------
-      # Node.js
-      # ----------------------------------------------------------
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-
-        with:
-          node-version: "24"
-
-
-      # ----------------------------------------------------------
       # Python
       # ----------------------------------------------------------
 
@@ -243,11 +232,12 @@ jobs:
       # ==========================================================
       # Download
       #
-      # Dukascopy serves one file per hour. Without retries a
-      # failed/empty hourly response is silently dropped, which
-      # produces gaps in the data. The flags below retry failed
-      # and empty responses instead of skipping them, and slow
-      # the batches down to stay clear of rate limits.
+      # download.py fetches one hour per request from the jetta
+      # API, retries failed/empty responses, and prints one
+      # progress line per 6-hour chunk plus explicit empty/failed
+      # hour lines, e.g.:
+      #   chunk: 2018-07-12 00:00:00.000 -> 2018-07-12 06:00:00.000 | ticks: 17784 | total: 12097760 | 52%
+      #   empty: 2018-07-12 06:00:00.000 | server returned no ticks (6 attempts)
       # ==========================================================
 
       - name: Download ticks
@@ -262,19 +252,11 @@ jobs:
 
           echo "${{ steps.range.outputs.from_date }} -> ${{ steps.range.outputs.to_date }}"
 
-          npx -y dukascopy-node \
-            -i "${{ steps.range.outputs.instrument }}" \
-            -from "${{ steps.range.outputs.from_date }}" \
-            -to "${{ steps.range.outputs.to_date }}" \
-            -t tick \
-            -f csv \
-            -v \
-            -dir "./download" \
-            --retries 5 \
-            --retry-pause 2000 \
-            --retry-on-empty \
-            --no-fail-after-retries \
-            --batch-pause 2000
+          python download.py \
+            --instrument "${{ steps.range.outputs.instrument_upper }}" \
+            --from-date "${{ steps.range.outputs.from_date }}" \
+            --to-date "${{ steps.range.outputs.to_date }}" \
+            -o "download/${{ steps.range.outputs.slug }}.raw.csv"
 
 
       # ==========================================================

@@ -6,7 +6,7 @@ Modes:
   python3 debug_hours.py BTCUSD 2026-02-01/11 2026-02-01/12 ...
       For each probe (GMT) fetches BOTH endpoints and reports status,
       size and tick count:
-        - jetta JSON API (what dukascopy-node downloads):
+        - jetta JSON API (what the downloader uses):
           {{https://jetta.dukascopy.com/v1/ticks/{CODE}}}/{Y}/{M}/{D}/{H}
           (CODE uses the metadata form, e.g. BTC-USD)
         - classic bi5 feed (LZMA, 20 bytes per tick):
@@ -16,14 +16,18 @@ Modes:
       reject or mis-serve default scripting clients.
 
   python3 debug_hours.py --count download/file.csv
-      Counts rows per hour in a raw dukascopy-node CSV
-      (timestamp,askPrice,bidPrice[,askVolume,bidVolume]) so you can see
-      exactly which hours the tool produced.
+      Counts rows per hour in a raw tick CSV (timestamp,askPrice,bidPrice,...)
+      so you can see exactly which hours the tool produced.
+
+  python3 debug_hours.py --compare lib.csv ours.csv
+      Compares two raw tick CSVs: row counts, shared timestamps, and
+      price/volume mismatches (tolerant to float formatting).
 """
 
 import csv
 import json
 import lzma
+import math
 import os
 import subprocess
 import sys
@@ -190,10 +194,89 @@ def run_count(csv_path):
         h += timedelta(hours=1)
 
 
+def load_ticks(path):
+    """Return {timestamp_ms: (ask, bid, askVolume, bidVolume)}."""
+    out = {}
+    with open(path, newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None) or []
+        idx = {name: i for i, name in enumerate(header)}
+        ti = idx.get("timestamp")
+        ai, bi = idx.get("askPrice"), idx.get("bidPrice")
+        av, bv = idx.get("askVolume"), idx.get("bidVolume")
+        if ti is None or ai is None or bi is None:
+            print(f"ERROR: {path} lacks timestamp/askPrice/bidPrice columns", file=sys.stderr)
+            sys.exit(1)
+        for row in reader:
+            if not row:
+                continue
+            ts = int(float(row[ti]))
+            out[ts] = (
+                float(row[ai]),
+                float(row[bi]),
+                float(row[av]) if av is not None else None,
+                float(row[bv]) if bv is not None else None,
+            )
+    return out
+
+
+def run_compare(a_path, b_path):
+    A = load_ticks(a_path)
+    B = load_ticks(b_path)
+    keys_a = set(A)
+    keys_b = set(B)
+    common = keys_a & keys_b
+    only_a = keys_a - keys_b
+    only_b = keys_b - keys_a
+
+    price_mismatch = 0
+    vol_mismatch = 0
+    samples = []
+    for k in sorted(common):
+        pa, pb = A[k], B[k]
+        if not (
+            math.isclose(pa[0], pb[0], rel_tol=1e-9, abs_tol=1e-9)
+            and math.isclose(pa[1], pb[1], rel_tol=1e-9, abs_tol=1e-9)
+        ):
+            price_mismatch += 1
+            if len(samples) < 5:
+                samples.append((k, pa, pb))
+        if pa[2] is not None and pb[2] is not None:
+            if not (
+                math.isclose(pa[2], pb[2], rel_tol=1e-6, abs_tol=1e-12)
+                and math.isclose(pa[3], pb[3], rel_tol=1e-6, abs_tol=1e-12)
+            ):
+                vol_mismatch += 1
+
+    print(f"compare: rows lib={len(A)} ours={len(B)}")
+    print(
+        f"compare: timestamps common={len(common)} "
+        f"only_lib={len(only_a)} only_ours={len(only_b)}"
+    )
+    print(f"compare: price mismatches={price_mismatch} volume mismatches={vol_mismatch}")
+    for k, pa, pb in samples:
+        ts = datetime.fromtimestamp(k / 1000, tz=timezone.utc)
+        print(f"  sample {ts:%Y-%m-%d %H:%M:%S.%f} lib={pa} ours={pb}")
+    if only_a:
+        ts = datetime.fromtimestamp(min(only_a) / 1000, tz=timezone.utc)
+        print(f"  first only-in-lib timestamp: {ts:%Y-%m-%d %H:%M:%S.%f}")
+    if only_b:
+        ts = datetime.fromtimestamp(min(only_b) / 1000, tz=timezone.utc)
+        print(f"  first only-in-ours timestamp: {ts:%Y-%m-%d %H:%M:%S.%f}")
+
+    if only_a or only_b or price_mismatch:
+        print("VERDICT: MISMATCH")
+    else:
+        print("VERDICT: outputs match")
+
+
 def main():
     args = sys.argv[1:]
     if args and args[0] == "--count":
         run_count(args[1])
+        return
+    if args and args[0] == "--compare":
+        run_compare(args[1], args[2])
         return
     if len(args) < 2:
         print(__doc__)

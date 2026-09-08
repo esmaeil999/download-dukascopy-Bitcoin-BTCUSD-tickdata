@@ -13,6 +13,7 @@ Downloads historical tick data from the public **Dukascopy** datafeed using GitH
 
 ### Repository files
 - `.github/workflows/main.yml` — the workflow (download → convert → fill gaps → gap check → zip → release)
+- `download.py` — the downloader (fetches hourly ticks from the Dukascopy API with per-chunk progress logs)
 - `convert.py` — converts raw CSV to the target format (`python convert.py INPUT.csv -o OUTPUT.csv`)
 - `fill_gaps.py` — recovers hours the main API missed from Dukascopy's classic bi5 feed
 - `gapcheck.py` — checks the output for missing hours/days and fails the run if gaps are found
@@ -46,6 +47,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### فایل‌های ریپو
 - `.github/workflows/main.yml` — ورک‌فلو (دانلود → تبدیل → بازیابی ساعت‌های جاافتاده → بررسی گپ → زیپ → ریلیز)
+- `download.py` — دانلودر (تیک‌های ساعتی را با لاگ پیشرفت chunk‌به‌chunk از API دوکاسکوپی می‌گیرد)
 - `convert.py` — تبدیل CSV خام به فرمت نهایی (`python convert.py INPUT.csv -o OUTPUT.csv`)
 - `fill_gaps.py` — ساعت‌هایی را که API اصلی جا انداخته از فید کلاسیک bi5 دوکاسکوپی بازیابی می‌کند
 - `gapcheck.py` — خروجی را از نظر ساعت/روز جاافتاده بررسی می‌کند و در صورت وجود گپ، اجرا را ناموفق می‌کند
@@ -83,6 +85,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### Файлы репозитория
 - `.github/workflows/main.yml` — workflow (скачивание → конвертация → заполнение пропусков → проверка → архив → релиз)
+- `download.py` — загрузчик (скачивает почасовые тики из API Dukascopy с логом прогресса по чанкам)
 - `convert.py` — конвертер CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
 - `fill_gaps.py` — восстанавливает часы, пропущенные основным API, из классического фида bi5 Dukascopy
 - `gapcheck.py` — проверяет результат на пропущенные часы/дни и завершает запуск ошибкой при наличии пропусков
@@ -117,6 +120,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### ملفات المستودع
 - `.github/workflows/main.yml` — سير العمل (تنزيل → تحويل → استرجاع الساعات الناقصة → فحص الفجوات → ضغط → نشر)
+- `download.py` — أداة التنزيل (تجلب التيكات ساعة بساعة من واجهة Dukascopy مع سجل تقدم لكل مقطع)
 - `convert.py` — سكربت تحويل CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
 - `fill_gaps.py` — يسترجع الساعات التي فاتتها الواجهة الرئيسية من خلاصة bi5 الكلاسيكية من Dukascopy
 - `gapcheck.py` — يفحص البيانات الناتجة بحثًا عن ساعات/أيام ناقصة ويفشل التشغيل عند وجود فجوات
@@ -151,6 +155,7 @@ Descarga datos históricos de ticks desde el feed público de **Dukascopy** medi
 
 ### Archivos del repositorio
 - `.github/workflows/main.yml` — flujo de trabajo (descarga → conversión → relleno de huecos → comprobación → zip → release)
+- `download.py` — el descargador (obtiene los ticks por hora de la API de Dukascopy con logs de progreso por bloques)
 - `convert.py` — script de conversión de CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
 - `fill_gaps.py` — recupera del feed clásico bi5 de Dukascopy las horas que la API principal omitió
 - `gapcheck.py` — comprueba si faltan horas/días en el resultado y hace fallar la ejecución si hay huecos

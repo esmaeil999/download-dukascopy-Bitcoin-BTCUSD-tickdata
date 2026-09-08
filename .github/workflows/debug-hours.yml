@@ -14,7 +14,7 @@ on:
         default: "2026-02-01/11 2026-02-01/12 2026-02-01/21 2026-02-01/22 2026-02-08/16 2026-02-08/17"
 
       day:
-        description: "One full day to download end-to-end via dukascopy-node (YYYY-MM-DD)"
+        description: "One full day to download end-to-end and compare (YYYY-MM-DD)"
         required: true
         default: "2026-02-01"
 
@@ -51,7 +51,7 @@ jobs:
       #
       # For every hour prints HTTP status, byte size and tick
       # count from:
-      #   - jetta JSON API (what dukascopy-node downloads)
+      #   - jetta JSON API (what the downloader uses)
       #   - classic bi5 feed (used by JForex-era tools)
       # ==========================================================
 
@@ -65,8 +65,7 @@ jobs:
 
 
       # ==========================================================
-      # 2) Download one full day end-to-end via dukascopy-node
-      #    (same flags as the main workflow)
+      # 2) Download one full day via dukascopy-node (reference)
       # ==========================================================
 
       - name: Download one full day via dukascopy-node
@@ -94,8 +93,26 @@ jobs:
 
 
       # ==========================================================
-      # 3) Show per-hour row counts of the downloaded day
-      #    (empty hours are flagged)
+      # 3) Download the same day via download.py (ours)
+      # ==========================================================
+
+      - name: Download the same day via download.py
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          NEXT=$(date -d "${{ inputs.day }} +1 day" +%Y-%m-%d)
+
+          python3 download.py \
+            --instrument "${{ inputs.instrument }}" \
+            --from-date "${{ inputs.day }}" \
+            --to-date "$NEXT" \
+            -o download_py.csv
+
+
+      # ==========================================================
+      # 4) Per-hour row counts (library output)
       # ==========================================================
 
       - name: Show per-hour row counts
@@ -109,3 +126,19 @@ jobs:
           echo "file: $CSV_FILE"
 
           python3 debug_hours.py --count "$CSV_FILE"
+
+
+      # ==========================================================
+      # 5) Compare library vs download.py outputs
+      #    (timestamps, prices, volumes must match)
+      # ==========================================================
+
+      - name: Compare library vs download.py outputs
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          LIB_CSV=$(find download -type f -name "*.csv" | head -n 1)
+
+          python3 debug_hours.py --compare "$LIB_CSV" download_py.csv
