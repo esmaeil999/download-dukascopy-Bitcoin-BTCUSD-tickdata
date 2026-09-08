@@ -321,6 +321,25 @@ jobs:
 
 
       # ==========================================================
+      # Fill missing hours from the classic bi5 feed
+      #
+      # The jetta API occasionally returns empty hours that the
+      # older datafeed.dukascopy.com bi5 feed still has. This
+      # step is best-effort; gapcheck below validates the result.
+      # ==========================================================
+
+      - name: Fill missing hours from bi5 feed
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          python fill_gaps.py \
+            "${{ steps.range.outputs.slug }}.csv" \
+            --instrument "${{ steps.range.outputs.instrument_upper }}"
+
+
+      # ==========================================================
       # Gap check (missing hours / days)
       #
       # Fails this job if any significant gap is found, so an
