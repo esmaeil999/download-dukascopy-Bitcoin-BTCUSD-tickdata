@@ -7,9 +7,13 @@ Modes:
       For each probe (GMT) fetches BOTH endpoints and reports status,
       size and tick count:
         - jetta JSON API (what dukascopy-node downloads):
-          https://jetta.dukascopy.com/v1/ticks/{CODE}/{Y}/{M}/{D}/{H}
+          {{https://jetta.dukascopy.com/v1/ticks/{CODE}}}/{Y}/{M}/{D}/{H}
+          (CODE uses the metadata form, e.g. BTC-USD)
         - classic bi5 feed (LZMA, 20 bytes per tick):
-          https://datafeed.dukascopy.com/datafeed/{INST}/{Y}/{MM0}/{DD}/{HH}h_ticks.bi5
+          {{https://datafeed.dukascopy.com/datafeed/{INST}}}/{Y}/{MM0}/{DD}/{HH}h_ticks.bi5
+
+      Requests go through curl with a browser User-Agent: both endpoints
+      reject or mis-serve default scripting clients.
 
   python3 debug_hours.py --count download/file.csv
       Counts rows per hour in a raw dukascopy-node CSV
@@ -20,34 +24,83 @@ Modes:
 import csv
 import json
 import lzma
+import os
+import subprocess
 import sys
-import urllib.error
-import urllib.request
+import tempfile
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 JETTA_ROOT = "https://jetta.dukascopy.com/v1/ticks"
 BI5_ROOT = "https://datafeed.dukascopy.com/datafeed"
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "debug-hours/1.0"})
+    """Fetch via curl with a browser User-Agent; return (status, body)."""
+    fd, tmp = tempfile.mkstemp()
+    os.close(fd)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.status, resp.read()
-    except urllib.error.HTTPError as e:
-        return e.code, b""
-    except Exception as e:  # network errors etc.
+        proc = subprocess.run(
+            ["curl", "-sS", "-L", "--max-time", "60", "-A", UA,
+             "-o", tmp, "-w", "%{http_code}", url],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        code = proc.stdout.strip()
+        status = int(code) if code.isdigit() else None
+        with open(tmp, "rb") as f:
+            body = f.read()
+        if status is None:
+            return None, (proc.stderr.strip() or "curl failed").encode()
+        return status, body
+    except Exception as e:
         return None, str(e).encode()
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def code_variants(instrument):
-    base = instrument.strip().replace("/", "")
+    """jetta uses the metadata code form (BTC-USD); try safe fallbacks too."""
+    base = instrument.strip().replace("/", "").upper()
     out = []
-    for c in (base.upper(), base.lower()):
-        if c not in out:
-            out.append(c)
-    return out
+    if len(base) == 6:
+        out.append(base[:3] + "-" + base[3:])  # BTCUSD -> BTC-USD (metadata code)
+    out.append(base)
+    for v in list(out):
+        out.append(v.lower())
+    deduped = []
+    for v in out:
+        if v not in deduped:
+            deduped.append(v)
+    return deduped
+
+
+def decode_bi5(blob):
+    try:
+        raw = lzma.decompress(blob, format=lzma.FORMAT_ALONE)
+        if len(raw) % 20 == 0:
+            return raw
+    except Exception:
+        pass
+    try:
+        raw = lzma.decompress(
+            blob,
+            format=lzma.FORMAT_RAW,
+            filters=[{"id": lzma.FILTER_LZMA1, "preset": 9}],
+        )
+        if len(raw) % 20 == 0:
+            return raw
+    except Exception:
+        pass
+    return None
 
 
 def probe_jetta(instrument, y, m, d, h):
@@ -81,11 +134,11 @@ def probe_bi5(instrument, y, m, d, h):
     ticks = None
     note = ""
     if status == 200 and body:
-        try:
-            raw = lzma.decompress(body, format=lzma.FORMAT_ALONE)
+        raw = decode_bi5(body)
+        if raw is not None:
             ticks = len(raw) // 20
-        except Exception as e:
-            note = f" lzma_error={e}"
+        else:
+            note = " lzma_error"
     tick_txt = f" ticks={ticks}" if ticks is not None else ""
     return f"http={status} bytes={len(body)}{tick_txt}{note}  [{url}]"
 

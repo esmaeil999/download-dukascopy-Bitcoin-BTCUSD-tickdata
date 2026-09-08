@@ -16,6 +16,9 @@ This script:
 Best-effort: hours that cannot be recovered are reported and left empty;
 gapcheck.py afterwards decides whether the final result is acceptable.
 
+Downloads use curl with a browser User-Agent: the bi5 feed rejects or
+mis-serves default scripting clients.
+
 Usage:
     python fill_gaps.py ticks.csv --instrument BTCUSD [--point 0.1]
     python fill_gaps.py ticks.csv --instrument BTCUSD --bi5-dir ./cache  # offline/testing
@@ -27,14 +30,18 @@ import lzma
 import os
 import statistics
 import struct
+import subprocess
 import sys
+import tempfile
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta, timezone
 
 BI5_ROOT = "https://datafeed.dukascopy.com/datafeed"
 RECORD = struct.Struct(">IIIff")  # ms offset, ask, bid, askVolume, bidVolume
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 
 
 def parse_args():
@@ -119,6 +126,39 @@ def find_empty_hours(present, min_key, max_key):
     return out
 
 
+def download(url, retries, pause=2):
+    """Download with curl + browser UA; return bytes or None."""
+    for attempt in range(retries):
+        fd, tmp = tempfile.mkstemp()
+        os.close(fd)
+        try:
+            proc = subprocess.run(
+                ["curl", "-sS", "-L", "--max-time", "60", "-A", UA,
+                 "-o", tmp, "-w", "%{http_code}", url],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            code = proc.stdout.strip()
+            status = int(code) if code.isdigit() else 0
+            if status == 200:
+                with open(tmp, "rb") as f:
+                    data = f.read()
+                return data if data else None
+            if status == 404:
+                return None
+        except Exception:
+            pass
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        if attempt < retries - 1:
+            time.sleep(pause)
+    return None
+
+
 def fetch_bi5(inst, dt, args):
     rel = f"{inst}/{dt:%Y}/{dt.month - 1:02d}/{dt:%d}/{dt:%H}h_ticks.bi5"
     if args.bi5_dir:
@@ -127,21 +167,7 @@ def fetch_bi5(inst, dt, args):
                 return f.read()
         except OSError:
             return None
-    url = f"{BI5_ROOT}/{rel}"
-    for attempt in range(args.retries):
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "fill-gaps/1.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                if resp.status == 200:
-                    return resp.read()
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return None
-        except Exception:
-            pass
-        if attempt < args.retries - 1:
-            time.sleep(2)
-    return None
+    return download(f"{BI5_ROOT}/{rel}", args.retries)
 
 
 def decode_bi5(blob):
