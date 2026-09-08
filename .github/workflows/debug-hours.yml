@@ -1,0 +1,111 @@
+name: Debug tick hours
+
+on:
+  workflow_dispatch:
+    inputs:
+      instrument:
+        description: "Instrument (BTCUSD)"
+        required: true
+        default: "BTCUSD"
+
+      probes:
+        description: "Space-separated YYYY-MM-DD/HH hours (GMT) to probe on Dukascopy servers"
+        required: true
+        default: "2026-02-01/11 2026-02-01/12 2026-02-01/21 2026-02-01/22 2026-02-08/16 2026-02-08/17"
+
+      day:
+        description: "One full day to download end-to-end via dukascopy-node (YYYY-MM-DD)"
+        required: true
+        default: "2026-02-01"
+
+permissions:
+  contents: read
+
+jobs:
+
+  probe:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+
+        with:
+          node-version: "24"
+
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+
+        with:
+          python-version: "3.12"
+
+
+      # ==========================================================
+      # 1) Probe both Dukascopy endpoints for the given hours
+      #
+      # For every hour prints HTTP status, byte size and tick
+      # count from:
+      #   - jetta JSON API (what dukascopy-node downloads)
+      #   - classic bi5 feed (used by JForex-era tools)
+      # ==========================================================
+
+      - name: Probe Dukascopy endpoints for given hours
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          python3 debug_hours.py "${{ inputs.instrument }}" ${{ inputs.probes }}
+
+
+      # ==========================================================
+      # 2) Download one full day end-to-end via dukascopy-node
+      #    (same flags as the main workflow)
+      # ==========================================================
+
+      - name: Download one full day via dukascopy-node
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          mkdir -p download
+
+          NEXT=$(date -d "${{ inputs.day }} +1 day" +%Y-%m-%d)
+
+          npx -y dukascopy-node \
+            -i "${{ inputs.instrument }}" \
+            -from "${{ inputs.day }}" \
+            -to "$NEXT" \
+            -t tick \
+            -f csv \
+            -v \
+            -dir "./download" \
+            --retries 5 \
+            --retry-pause 2000 \
+            --retry-on-empty \
+            --no-fail-after-retries
+
+
+      # ==========================================================
+      # 3) Show per-hour row counts of the downloaded day
+      #    (empty hours are flagged)
+      # ==========================================================
+
+      - name: Show per-hour row counts
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          CSV_FILE=$(find download -type f -name "*.csv" | head -n 1)
+
+          echo "file: $CSV_FILE"
+
+          python3 debug_hours.py --count "$CSV_FILE"
