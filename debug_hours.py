@@ -6,11 +6,11 @@ Modes:
   python3 debug_hours.py BTCUSD 2026-02-01/11 2026-02-01/12 ...
       For each probe (GMT) fetches BOTH endpoints and reports status,
       size and tick count:
-        - jetta JSON API (what the downloader uses):
-          {{https://jetta.dukascopy.com/v1/ticks/{CODE}}}/{Y}/{M}/{D}/{H}
+        - jetta JSON API (what the downloader uses), one URL per hour:
+          /v1/ticks/{CODE}/{Y}/{M}/{D}/{H} on jetta.dukascopy.com
           (CODE uses the metadata form, e.g. BTC-USD)
         - classic bi5 feed (LZMA, 20 bytes per tick):
-          {{https://datafeed.dukascopy.com/datafeed/{INST}}}/{Y}/{MM0}/{DD}/{HH}h_ticks.bi5
+          /datafeed/{INST}/{Y}/{MM0}/{DD}/{HH}h_ticks.bi5 on datafeed.dukascopy.com
 
       Requests go through curl with a browser User-Agent: both endpoints
       reject or mis-serve default scripting clients.
