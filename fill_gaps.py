@@ -67,7 +67,7 @@ def parse_args():
         default=0.2,
         help="Max allowed deviation vs neighbouring prices (default: 0.2 = 20%%)",
     )
-    parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--retries", type=int, default=5)
     return parser.parse_args()
 
 
@@ -126,7 +126,7 @@ def find_empty_hours(present, min_key, max_key):
     return out
 
 
-def download(url, retries, pause=2):
+def download(url, retries, pause=3):
     """Download with curl + browser UA; return bytes or None."""
     for attempt in range(retries):
         fd, tmp = tempfile.mkstemp()
