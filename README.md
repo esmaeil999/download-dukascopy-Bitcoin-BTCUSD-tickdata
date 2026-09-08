@@ -13,7 +13,8 @@ Downloads historical tick data from the public **Dukascopy** datafeed using GitH
 
 ### Repository files
 - `.github/workflows/main.yml` — the workflow (download → convert → zip → release)
-- `convert.py` — converts raw CSV to the target format
+- `convert.py` — converts raw CSV to the target format (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `LICENSE` — MIT license
 
 ### How to use
 1. Go to **Actions → Download Dukascopy tick data → Run workflow**.
@@ -22,11 +23,11 @@ Downloads historical tick data from the public **Dukascopy** datafeed using GitH
 
 ### Output CSV format (GMT)
 GmtTime,Bid,Ask,BidVolume,AskVolume
-2024-01-01 22:00:12.108,1.10427,1.10481,0.9,0.9
+2024-01-01 22:00:12.108,42103.5,42105.1,0.02,0.02
 
 ### Importing into MetaTrader
 **MetaTrader 5 (recommended):**
-1. `View → Symbols (Ctrl+U)` → **Custom** → **Create Custom Symbol** (e.g. `EURUSD.ticks`).
+1. `View → Symbols (Ctrl+U)` → **Custom** → **Create Custom Symbol** (e.g. `BTCUSD.ticks`).
 2. Open the symbol → **Ticks** tab → **Import Ticks**.
 3. Use the custom symbol in the **Strategy Tester** (Every tick based on real ticks).
 
@@ -42,7 +43,8 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### فایل‌های ریپو
 - `.github/workflows/main.yml` — ورک‌فلو (دانلود → تبدیل → زیپ → ریلیز)
-- `convert.py` — تبدیل CSV خام به فرمت نهایی
+- `convert.py` — تبدیل CSV خام به فرمت نهایی (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `LICENSE` — مجوز MIT
 
 ### نحوه استفاده
 1. به مسیر **Actions → Download Dukascopy tick data → Run workflow** بروید.
@@ -52,14 +54,14 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 ### فرمت خروجی (به وقت GMT)
 ​
 GmtTime,Bid,Ask,BidVolume,AskVolume
-2024-01-01 22:00:12.108,1.10427,1.10481,0.9,0.9
+2024-01-01 22:00:12.108,42103.5,42105.1,0.02,0.02
 - `GmtTime`: زمان تیک با دقت میلی‌ثانیه
 - `Bid` / `Ask`: قیمت خرید و فروش
 - `BidVolume` / `AskVolume`: حجم به میلیون واحد
 
 ### انتقال دیتا به متاتریدر
 **متاتریدر ۵ (پیشنهادی):**
-1. از منوی `View → Symbols (Ctrl+U)` بخش **Custom** یک **نماد سفارشی** بسازید (مثلاً `EURUSD.ticks`).
+1. از منوی `View → Symbols (Ctrl+U)` بخش **Custom** یک **نماد سفارشی** بسازید (مثلاً `BTCUSD.ticks`).
 2. نماد را باز کنید → تب **Ticks** → **Import Ticks**.
 3. سپس در **Strategy Tester** حالت *Every tick based on real ticks* را انتخاب کنید.
 
@@ -75,7 +77,8 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### Файлы репозитория
 - `.github/workflows/main.yml` — workflow (скачивание → конвертация → архив → релиз)
-- `convert.py` — конвертер CSV
+- `convert.py` — конвертер CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `LICENSE` — лицензия MIT
 
 ### Как использовать
 1. Откройте **Actions → Download Dukascopy tick data → Run workflow**.
@@ -85,11 +88,11 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 ### Формат CSV (GMT)
 ​
 GmtTime,Bid,Ask,BidVolume,AskVolume
-2024-01-01 22:00:12.108,1.10427,1.10481,0.9,0.9
+2024-01-01 22:00:12.108,42103.5,42105.1,0.02,0.02
 
 ### Импорт в MetaTrader
 **MetaTrader 5 (рекомендуется):**
-1. `Вид → Символы (Ctrl+U)` → **Custom** → создайте **пользовательский символ** (например, `EURUSD.ticks`).
+1. `Вид → Символы (Ctrl+U)` → **Custom** → создайте **пользовательский символ** (например, `BTCUSD.ticks`).
 2. Откройте символ → вкладка **Тики** → **Импорт тиков**.
 3. Запускайте тесты в **Тестере стратегий** в режиме *Каждый тик на основе реальных тиков*.
 
@@ -105,7 +108,8 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 
 ### ملفات المستودع
 - `.github/workflows/main.yml` — سير العمل (تنزيل → تحويل → ضغط → نشر)
-- `convert.py` — سكربت تحويل CSV
+- `convert.py` — سكربت تحويل CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `LICENSE` — ترخيص MIT
 
 ### طريقة الاستخدام
 1. اذهب إلى **Actions → Download Dukascopy tick data → Run workflow**.
@@ -115,11 +119,11 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 ### صيغة ملف CSV (بتوقيت GMT)
 ​
 GmtTime,Bid,Ask,BidVolume,AskVolume
-2024-01-01 22:00:12.108,1.10427,1.10481,0.9,0.9
+2024-01-01 22:00:12.108,42103.5,42105.1,0.02,0.02
 
 ### الاستيراد إلى MetaTrader
 **MetaTrader 5 (موصى به):**
-1. من `View → Symbols (Ctrl+U)` أنشئ **رمزًا مخصصًا** في قسم **Custom** (مثلاً `EURUSD.ticks`).
+1. من `View → Symbols (Ctrl+U)` أنشئ **رمزًا مخصصًا** في قسم **Custom** (مثلاً `BTCUSD.ticks`).
 2. افتح الرمز → تبويب **Ticks** → **Import Ticks**.
 3. ثم استخدم **Strategy Tester** بوضع *Every tick based on real ticks*.
 
@@ -135,7 +139,8 @@ Descarga datos históricos de ticks desde el feed público de **Dukascopy** medi
 
 ### Archivos del repositorio
 - `.github/workflows/main.yml` — flujo de trabajo (descarga → conversión → zip → release)
-- `convert.py` — script de conversión de CSV
+- `convert.py` — script de conversión de CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `LICENSE` — licencia MIT
 
 ### Cómo usarlo
 1. Ve a **Actions → Download Dukascopy tick data → Run workflow**.
@@ -145,12 +150,11 @@ Descarga datos históricos de ticks desde el feed público de **Dukascopy** medi
 ### Formato del CSV (GMT)
 ​
 GmtTime,Bid,Ask,BidVolume,AskVolume
-2024-01-01 22:00:12.108,1.10427,1.10481,0.9,0.9
-JavaScript
+2024-01-01 22:00:12.108,42103.5,42105.1,0.02,0.02
 
 ### Importar a MetaTrader
 **MetaTrader 5 (recomendado):**
-1. En `Ver → Símbolos (Ctrl+U)` crea un **símbolo personalizado** en **Custom** (p. ej. `EURUSD.ticks`).
+1. En `Ver → Símbolos (Ctrl+U)` crea un **símbolo personalizado** en **Custom** (p. ej. `BTCUSD.ticks`).
 2. Abre el símbolo → pestaña **Ticks** → **Importar ticks**.
 3. Después usa el **Probador de estrategias** con el modo *Cada tick basado en ticks reales*.
 
@@ -162,3 +166,4 @@ JavaScript
 - Times are always **GMT** (matching Dukascopy/JForex). | زمان‌ها همیشه **GMT** است. | Время всегда **GMT**. | الأوقات دائمًا بتوقيت **GMT**. | Las horas son siempre **GMT**.
 - Each GitHub Actions job is limited to ~6 hours; split long ranges. | هر Job حدود ۶ ساعت محدودیت دارد؛ بازه‌های طولانی را تقسیم کنید. | Лимит задачи ~6 часов; делите длинные диапазоны. | حد كل مهمة ٦ ساعات تقريبًا؛ قسّم النطاقات الطويلة. | Cada job tiene un límite de ~6 horas; divide rangos largos.
 - Weekend/holiday hours simply contain no ticks. | ساعت‌های آخر هفته و تعطیل تیکی ندارند. | В выходные и праздники тиков нет. | لا توجد تيكات في عطلات نهاية الأسبوع والأعياد. | Los fines de semana y festivos no hay ticks.
+- Telegram notifications are optional: set the **TELEGRAM_BOT_TOKEN** and **TELEGRAM_CHAT_ID** repository secrets to enable them; otherwise that step is skipped. | اعلان‌های تلگرام اختیاری است: برای فعال‌سازی، سکرت‌های **TELEGRAM_BOT_TOKEN** و **TELEGRAM_CHAT_ID** را در تنظیمات ریپو قرار دهید؛ در غیر این صورت آن مرحله رد می‌شود. | Уведомления Telegram опциональны: задайте секреты репозитория **TELEGRAM_BOT_TOKEN** и **TELEGRAM_CHAT_ID**; иначе этот шаг будет пропущен. | إشعارات تيليجرام اختيارية: عيّن السرّين **TELEGRAM_BOT_TOKEN** و**TELEGRAM_CHAT_ID** في إعدادات المستودع لتفعيلها، وإلا يتم تخطي تلك الخطوة. | Las notificaciones de Telegram son opcionales: define los secretos **TELEGRAM_BOT_TOKEN** y **TELEGRAM_CHAT_ID** en el repositorio; si no, ese paso se omite.

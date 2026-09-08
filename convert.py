@@ -1,21 +1,47 @@
 #!/usr/bin/env python3
 """Convert dukascopy-node CSV (timestamp,askPrice,bidPrice[,askVolume,bidVolume])
-to JForex-style CSV: GmtTime,Bid,Ask,BidVolume,AskVolume (GMT)."""
+to JForex-style CSV: GmtTime,Bid,Ask,BidVolume,AskVolume (GMT).
 
+Usage:
+    python convert.py INPUT.csv [MORE.csv ...] -o OUTPUT.csv
+    python convert.py   # reads ./download/*.csv -> ticks_converted.csv
+"""
+
+import argparse
 import csv
 import glob
 import sys
 from datetime import datetime, timezone
 
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Convert dukascopy-node CSV files to JForex-style CSV (GMT)."
+    )
+    parser.add_argument(
+        "inputs",
+        nargs="*",
+        help="Input CSV file(s). Defaults to all CSVs in ./download",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="ticks_converted.csv",
+        help="Output CSV path (default: ticks_converted.csv)",
+    )
+    return parser.parse_args()
+
+
 def main():
-    out_path = sys.argv[1] if len(sys.argv) > 1 else "ticks_converted.csv"
-    files = sorted(glob.glob("download/*.csv"))
+    args = parse_args()
+
+    files = sorted(args.inputs) if args.inputs else sorted(glob.glob("download/*.csv"))
     if not files:
-        print("No input CSV files found in ./download", file=sys.stderr)
+        print("No input CSV files found.", file=sys.stderr)
         sys.exit(1)
 
     total = 0
-    with open(out_path, "w", newline="") as fo:
+    with open(args.output, "w", newline="") as fo:
         fo.write("GmtTime,Bid,Ask,BidVolume,AskVolume\n")
         for path in files:
             with open(path, newline="") as fi:
@@ -39,7 +65,8 @@ def main():
                     total += 1
             print(f"converted {path} (total rows: {total})", flush=True)
 
-    print(f"DONE. rows = {total} -> {out_path}")
+    print(f"DONE. rows = {total} -> {args.output}")
+
 
 if __name__ == "__main__":
     main()

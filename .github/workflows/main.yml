@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       instrument:
-        description: "Instrument (EURUSD, GBPUSD, USDJPY, XAUUSD)"
+        description: "Instrument (BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD)"
         required: true
         default: "BTCUSD"
 
       from:
         description: "Start date YYYY-MM-DD"
         required: true
-        default: "20017-01-01"
+        default: "2017-01-01"
 
       to:
         description: "End date YYYY-MM-DD"
@@ -288,9 +288,7 @@ jobs:
 
           echo "CSV: $CSV_FILE"
 
-          cp "$CSV_FILE" "${{ steps.range.outputs.slug }}.csv"
-
-          ls -lh "${{ steps.range.outputs.slug }}.csv"
+          ls -lh "$CSV_FILE"
 
 
       # ==========================================================
@@ -303,14 +301,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          INPUT_FILE="${{ steps.range.outputs.slug }}.csv"
+          OUTPUT_FILE="${{ steps.range.outputs.slug }}.csv"
 
-          if [ ! -f "$INPUT_FILE" ]; then
-            echo "ERROR: CSV file not found."
-            exit 1
-          fi
+          python convert.py download/*.csv -o "$OUTPUT_FILE"
 
-          python convert.py "$INPUT_FILE"
+          ls -lh "$OUTPUT_FILE"
 
 
       # ==========================================================
@@ -413,6 +408,10 @@ jobs:
   # ...
   #
   # This job starts only after ALL download jobs finish.
+  #
+  # Telegram is OPTIONAL: if the TELEGRAM_BOT_TOKEN /
+  # TELEGRAM_CHAT_ID secrets are not configured, this job
+  # exits successfully without failing the workflow run.
   # ============================================================
 
   send-to-telegram:
@@ -448,17 +447,16 @@ jobs:
           set -euo pipefail
 
           # ======================================================
-          # Check Telegram settings
+          # Check Telegram settings (optional)
           # ======================================================
 
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
-            echo "ERROR: TELEGRAM_BOT_TOKEN is missing."
-            exit 1
-          fi
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
 
-          if [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
-            echo "ERROR: TELEGRAM_CHAT_ID is missing."
-            exit 1
+            echo "Telegram secrets not configured."
+            echo "Skipping Telegram notifications (releases are already published)."
+
+            exit 0
+
           fi
 
 
@@ -561,140 +559,84 @@ jobs:
 
 
             # ====================================================
-            # Find normal ZIP
+            # Build caption + inline keyboard
+            #
+            # Handles both cases:
+            #   - single ZIP asset -> one DOWNLOAD button
+            #   - split ZIP        -> one button per part, caption
+            #     shows total size and part count
+            #
+            # Writes caption.txt and keyboard.json
             # ====================================================
 
-            ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c '
+            echo "$RELEASE_JSON" | python3 -c '
           import sys
           import json
 
-          data = json.load(sys.stdin)
           target = sys.argv[1]
-
-          for asset in data.get("assets", []):
-              if asset.get("name") == target:
-                  print(asset.get("browser_download_url", ""))
-                  break
-          ' "$ASSET_NAME")
-
-
-            DOWNLOAD_TEXT="⬇️ DOWNLOAD"
-
-
-            # ====================================================
-            # If ZIP was split
-            # ====================================================
-
-            if [ -z "$ASSET_URL" ]; then
-
-              echo "Original ZIP not found."
-
-              echo "Checking split parts..."
-
-
-              FIRST_PART=$(echo "$RELEASE_JSON" | python3 -c '
-          import sys
-          import json
+          instrument = sys.argv[2]
+          from_date = sys.argv[3]
+          to_date = sys.argv[4]
 
           data = json.load(sys.stdin)
-          target = sys.argv[1]
+          assets = data.get("assets", [])
 
+          single = None
           parts = []
 
-          for asset in data.get("assets", []):
+          for asset in assets:
               name = asset.get("name", "")
-
-              if name.startswith(target + "."):
+              if name == target:
+                  single = asset
+              elif name.startswith(target + "."):
                   parts.append(asset)
 
-          parts.sort(key=lambda x: x.get("name", ""))
+          parts.sort(key=lambda a: a.get("name", ""))
+
+          if single is None and not parts:
+              print("ERROR: No ZIP or split parts found.", file=sys.stderr)
+              sys.exit(1)
+
+          buttons = []
+
+          if single is not None:
+              total_size = single.get("size", 0)
+              buttons.append([{
+                  "text": "⬇️ DOWNLOAD",
+                  "url": single.get("browser_download_url", ""),
+              }])
+          else:
+              total_size = sum(p.get("size", 0) for p in parts)
+              for i, part in enumerate(parts, start=1):
+                  buttons.append([{
+                      "text": "⬇️ DOWNLOAD PART %d" % i,
+                      "url": part.get("browser_download_url", ""),
+                  }])
+
+          size_mb = "%.2f" % (total_size / 1024 / 1024)
+
+          caption = (
+              "<b>📦 %s Tick Data</b>\n"
+              "━━━━━━━━━━━━━━━━\n"
+              "📅 %s → %s\n"
+              "💾 Size: %s MB"
+              % (instrument, from_date, to_date, size_mb)
+          )
 
           if parts:
-              print(parts[0].get("browser_download_url", ""))
-          ' "$ASSET_NAME")
+              caption += "\n🧩 Parts: %d" % len(parts)
+
+          with open("caption.txt", "w") as f:
+              f.write(caption)
+
+          with open("keyboard.json", "w") as f:
+              json.dump({"inline_keyboard": buttons}, f, ensure_ascii=False)
+          ' "$ASSET_NAME" "$INSTRUMENT_UPPER" "$FROM_DATE" "$TO_DATE"
 
 
-              if [ -z "$FIRST_PART" ]; then
+            CAPTION=$(cat caption.txt)
 
-                echo "ERROR: No ZIP or split parts found."
-
-                exit 1
-
-              fi
-
-
-              ASSET_URL="$FIRST_PART"
-
-              DOWNLOAD_TEXT="⬇️ DOWNLOAD PART 1"
-
-            fi
-
-
-            # ====================================================
-            # Get asset size
-            # ====================================================
-
-            ASSET_SIZE=$(echo "$RELEASE_JSON" | python3 -c '
-          import sys
-          import json
-
-          data = json.load(sys.stdin)
-          target = sys.argv[1]
-
-          for asset in data.get("assets", []):
-              if asset.get("name") == target:
-                  print(asset.get("size", 0))
-                  break
-          ' "$ASSET_NAME")
-
-
-            if [ -z "$ASSET_SIZE" ]; then
-              ASSET_SIZE=0
-            fi
-
-
-            FILE_SIZE_MB=$(awk \
-              "BEGIN {printf \"%.2f\", $ASSET_SIZE / 1024 / 1024}")
-
-
-            # ====================================================
-            # Telegram caption
-            # ====================================================
-
-            CAPTION=$(printf \
-              '<b>📦 %s Tick Data</b>\n━━━━━━━━━━━━━━━━\n📅 %s → %s\n💾 Size: %s MB' \
-              "$INSTRUMENT_UPPER" \
-              "$FROM_DATE" \
-              "$TO_DATE" \
-              "$FILE_SIZE_MB")
-
-
-            # ====================================================
-            # Telegram inline keyboard
-            # ====================================================
-
-            KEYBOARD=$(python3 -c '
-          import json
-          import sys
-
-          text = sys.argv[1]
-          url = sys.argv[2]
-
-          data = {
-              "inline_keyboard": [
-                  [
-                      {
-                          "text": text,
-                          "url": url
-                      }
-                  ]
-              ]
-          }
-
-          print(json.dumps(data, ensure_ascii=False))
-          ' \
-              "$DOWNLOAD_TEXT" \
-              "$ASSET_URL")
+            KEYBOARD=$(cat keyboard.json)
 
 
             # ====================================================
@@ -711,7 +653,7 @@ jobs:
               --retry-delay 3 \
               --retry-all-errors \
               -X POST \
-              "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              "{{https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}}}/sendMessage" \
               --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
               --data-urlencode "text=${CAPTION}" \
               --data-urlencode "parse_mode=HTML" \
