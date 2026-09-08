@@ -242,6 +242,12 @@ jobs:
 
       # ==========================================================
       # Download
+      #
+      # Dukascopy serves one file per hour. Without retries a
+      # failed/empty hourly response is silently dropped, which
+      # produces gaps in the data. The flags below retry failed
+      # and empty responses instead of skipping them, and slow
+      # the batches down to stay clear of rate limits.
       # ==========================================================
 
       - name: Download ticks
@@ -262,7 +268,13 @@ jobs:
             -to "${{ steps.range.outputs.to_date }}" \
             -t tick \
             -f csv \
-            -dir "./download"
+            -v \
+            -dir "./download" \
+            --retries 5 \
+            --retry-pause 2000 \
+            --retry-on-empty \
+            --no-fail-after-retries \
+            --batch-pause 2000
 
 
       # ==========================================================
@@ -306,6 +318,26 @@ jobs:
           python convert.py download/*.csv -o "$OUTPUT_FILE"
 
           ls -lh "$OUTPUT_FILE"
+
+
+      # ==========================================================
+      # Gap check (missing hours / days)
+      #
+      # Fails this job if any significant gap is found, so an
+      # incomplete release is never published. To recover, use
+      # "Re-run failed jobs" in the Actions tab.
+      # ==========================================================
+
+      - name: Check for missing hours
+        shell: bash
+
+        run: |
+          set -euo pipefail
+
+          python gapcheck.py \
+            "${{ steps.range.outputs.slug }}.csv" \
+            --from-date "${{ steps.range.outputs.from_date }}" \
+            --to-date "${{ steps.range.outputs.to_date }}"
 
 
       # ==========================================================

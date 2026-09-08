@@ -12,8 +12,9 @@
 Downloads historical tick data from the public **Dukascopy** datafeed using GitHub Actions, converts it to the JForex-style CSV format, zips it, and publishes it as a **GitHub Release** — no local machine needed.
 
 ### Repository files
-- `.github/workflows/main.yml` — the workflow (download → convert → zip → release)
+- `.github/workflows/main.yml` — the workflow (download → convert → gap check → zip → release)
 - `convert.py` — converts raw CSV to the target format (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `gapcheck.py` — checks the output for missing hours/days and fails the run if gaps are found
 - `LICENSE` — MIT license
 
 ### How to use
@@ -42,8 +43,9 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 این پروژه تیک‌دیتای تاریخی را از فید عمومی **Dukascopy** با گیت‌هاب اکشن دانلود می‌کند، به فرمت CSV استایل JForex تبدیل می‌کند، زیپ می‌کند و در بخش **Releases** منتشر می‌کند — بدون نیاز به سیستم شخصی.
 
 ### فایل‌های ریپو
-- `.github/workflows/main.yml` — ورک‌فلو (دانلود → تبدیل → زیپ → ریلیز)
+- `.github/workflows/main.yml` — ورک‌فلو (دانلود → تبدیل → بررسی گپ → زیپ → ریلیز)
 - `convert.py` — تبدیل CSV خام به فرمت نهایی (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `gapcheck.py` — خروجی را از نظر ساعت/روز جاافتاده بررسی می‌کند و در صورت وجود گپ، اجرا را ناموفق می‌کند
 - `LICENSE` — مجوز MIT
 
 ### نحوه استفاده
@@ -76,8 +78,9 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 Скачивает исторические тиковые данные с открытого фида **Dukascopy** через GitHub Actions, конвертирует в CSV формата JForex, архивирует и публикует в **Releases**.
 
 ### Файлы репозитория
-- `.github/workflows/main.yml` — workflow (скачивание → конвертация → архив → релиз)
+- `.github/workflows/main.yml` — workflow (скачивание → конвертация → проверка пропусков → архив → релиз)
 - `convert.py` — конвертер CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `gapcheck.py` — проверяет результат на пропущенные часы/дни и завершает запуск ошибкой при наличии пропусков
 - `LICENSE` — лицензия MIT
 
 ### Как использовать
@@ -107,8 +110,9 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 يقوم بتنزيل بيانات التيك التاريخية من المصدر العام لـ **Dukascopy** عبر GitHub Actions، ويحوّلها إلى صيغة CSV بأسلوب JForex، ثم يضغطها وينشرها في قسم **Releases**.
 
 ### ملفات المستودع
-- `.github/workflows/main.yml` — سير العمل (تنزيل → تحويل → ضغط → نشر)
+- `.github/workflows/main.yml` — سير العمل (تنزيل → تحويل → فحص الفجوات → ضغط → نشر)
 - `convert.py` — سكربت تحويل CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `gapcheck.py` — يفحص البيانات الناتجة بحثًا عن ساعات/أيام ناقصة ويفشل التشغيل عند وجود فجوات
 - `LICENSE` — ترخيص MIT
 
 ### طريقة الاستخدام
@@ -138,8 +142,9 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 Descarga datos históricos de ticks desde el feed público de **Dukascopy** mediante GitHub Actions, los convierte al formato CSV estilo JForex, los comprime y los publica en **Releases**.
 
 ### Archivos del repositorio
-- `.github/workflows/main.yml` — flujo de trabajo (descarga → conversión → zip → release)
+- `.github/workflows/main.yml` — flujo de trabajo (descarga → conversión → comprobación de huecos → zip → release)
 - `convert.py` — script de conversión de CSV (`python convert.py INPUT.csv -o OUTPUT.csv`)
+- `gapcheck.py` — comprueba si faltan horas/días en el resultado y hace fallar la ejecución si hay huecos
 - `LICENSE` — licencia MIT
 
 ### Cómo usarlo
@@ -166,4 +171,5 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 - Times are always **GMT** (matching Dukascopy/JForex). | زمان‌ها همیشه **GMT** است. | Время всегда **GMT**. | الأوقات دائمًا بتوقيت **GMT**. | Las horas son siempre **GMT**.
 - Each GitHub Actions job is limited to ~6 hours; split long ranges. | هر Job حدود ۶ ساعت محدودیت دارد؛ بازه‌های طولانی را تقسیم کنید. | Лимит задачи ~6 часов; делите длинные диапазоны. | حد كل مهمة ٦ ساعات تقريبًا؛ قسّم النطاقات الطويلة. | Cada job tiene un límite de ~6 horas; divide rangos largos.
 - Weekend/holiday hours simply contain no ticks. | ساعت‌های آخر هفته و تعطیل تیکی ندارند. | В выходные и праздники тиков нет. | لا توجد تيكات في عطلات نهاية الأسبوع والأعياد. | Los fines de semana y festivos no hay ticks.
+- Failed hourly downloads are retried automatically; if the gap check still fails, open the failed run in **Actions** and click **Re-run failed jobs**. | دانلود ساعت‌های ناموفق به‌صورت خودکار تکرار می‌شود؛ اگر با این حال بررسی گپ ناموفق بود، در تب **Actions** ران ناموفق را باز کنید و **Re-run failed jobs** را بزنید. | Неудачные загрузки часов повторяются автоматически; если проверка пропусков всё равно не проходит, откройте неудачный запуск во вкладке **Actions** и нажмите **Re-run failed jobs**. | تتم إعادة محاولة تنزيل الساعات الفاشلة تلقائيًا؛ وإذا استمر فشل فحص الفجوات، افتح التشغيل الفاشل في تبويب **Actions** واضغط **Re-run failed jobs**. | Las descargas de horas fallidas se reintentan automáticamente; si la comprobación de huecos sigue fallando, abre la ejecución fallida en **Actions** y pulsa **Re-run failed jobs**.
 - Telegram notifications are optional: set the **TELEGRAM_BOT_TOKEN** and **TELEGRAM_CHAT_ID** repository secrets to enable them; otherwise that step is skipped. | اعلان‌های تلگرام اختیاری است: برای فعال‌سازی، سکرت‌های **TELEGRAM_BOT_TOKEN** و **TELEGRAM_CHAT_ID** را در تنظیمات ریپو قرار دهید؛ در غیر این صورت آن مرحله رد می‌شود. | Уведомления Telegram опциональны: задайте секреты репозитория **TELEGRAM_BOT_TOKEN** и **TELEGRAM_CHAT_ID**; иначе этот шаг будет пропущен. | إشعارات تيليجرام اختيارية: عيّن السرّين **TELEGRAM_BOT_TOKEN** و**TELEGRAM_CHAT_ID** في إعدادات المستودع لتفعيلها، وإلا يتم تخطي تلك الخطوة. | Las notificaciones de Telegram son opcionales: define los secretos **TELEGRAM_BOT_TOKEN** y **TELEGRAM_CHAT_ID** en el repositorio; si no, ese paso se omite.
