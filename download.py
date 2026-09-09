@@ -133,6 +133,21 @@ def derive_code(instrument):
     return base
 
 
+def default_point(inst):
+    """bi5 price point: explicit map, then rules (index/commodity CFDs
+    quote 3 decimals, JPY pairs 3, other 6-letter FX pairs 5, stock
+    CFDs 2). None when unknown."""
+    if inst in POINTS:
+        return POINTS[inst]
+    if len(inst) > 6 and IDX_CMD_RE.match(inst):
+        return 0.001
+    if len(inst) == 6:
+        return 0.001 if inst.endswith("JPY") else 0.00001
+    if len(inst) > 6 and STOCK_RE.match(inst):
+        return 0.01
+    return None
+
+
 def price_scale(multiplier):
     """Same rule as dukascopy-node's getPriceScale."""
     s = repr(multiplier).lower()
@@ -338,7 +353,7 @@ def main():
 
     point = args.point
     if point is None:
-        point = POINTS.get(inst)
+        point = default_point(inst)
     if point is None and args.source != "jetta":
         if args.source == "bi5":
             print(f"ERROR: no known point size for {inst}; pass --point", file=sys.stderr)

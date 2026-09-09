@@ -13,7 +13,10 @@ Modes:
           /datafeed/{INST}/{Y}/{MM0}/{DD}/{HH}h_ticks.bi5 on datafeed.dukascopy.com
 
       Requests go through curl with a browser User-Agent: both endpoints
-      reject or mis-serve default scripting clients.
+      reject or mis-serve default scripting clients. On success the first
+      tick's prices are printed too: real prices from jetta and raw
+      integers from bi5, so the bi5 point of an instrument can be
+      verified at a glance (point = jetta price / bi5 int).
 
   python3 debug_hours.py --count download/file.csv
       Counts rows per hour in a raw tick CSV (timestamp,askPrice,bidPrice,...)
@@ -29,6 +32,7 @@ import json
 import lzma
 import math
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -37,6 +41,7 @@ from datetime import datetime, timedelta, timezone
 
 JETTA_ROOT = "https://jetta.dukascopy.com/v1/ticks"
 BI5_ROOT = "https://datafeed.dukascopy.com/datafeed"
+RECORD = struct.Struct(">IIIff")  # bi5 record: ms, ask int, bid int, askVol, bidVol
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -121,6 +126,8 @@ def probe_jetta(instrument, y, m, d, h):
                 times = data.get("times")
                 if isinstance(times, list):
                     ticks = len(times)
+                if ticks:
+                    note += f" first: ask={data.get('ask')} bid={data.get('bid')}"
             except Exception as e:
                 note = f" json_error={e}"
         last = (url, status, len(body), ticks, note)
@@ -141,6 +148,9 @@ def probe_bi5(instrument, y, m, d, h):
         raw = decode_bi5(body)
         if raw is not None:
             ticks = len(raw) // 20
+            if ticks:
+                ms0, ask0, bid0, av0, bv0 = RECORD.unpack_from(raw, 0)
+                note += f" first_ints: ask={ask0} bid={bid0} avol={av0} bvol={bv0}"
         else:
             note = " lzma_error"
     tick_txt = f" ticks={ticks}" if ticks is not None else ""
