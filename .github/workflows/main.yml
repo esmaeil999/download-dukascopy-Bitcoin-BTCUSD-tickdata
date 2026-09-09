@@ -316,13 +316,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # carry over hours the downloader already confirmed as no-data
-          RAW_NODATA=$(find download -maxdepth 2 -name "*.nodata" | head -n 1 || true)
-          if [ -n "${RAW_NODATA:-}" ]; then
-            cp "$RAW_NODATA" "${{ steps.range.outputs.slug }}.csv.nodata"
-            echo "carried over $(wc -l < "${{ steps.range.outputs.slug }}.csv.nodata") confirmed no-data hours"
-          fi
-
           python fill_gaps.py \
             "${{ steps.range.outputs.slug }}.csv" \
             --instrument "${{ steps.range.outputs.instrument_upper }}"
