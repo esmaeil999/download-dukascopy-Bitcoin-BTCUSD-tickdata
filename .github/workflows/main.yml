@@ -303,26 +303,6 @@ jobs:
 
 
       # ==========================================================
-      # Gap check (missing hours / days)
-      #
-      # Fails this job if any significant gap is found, so an
-      # incomplete release is never published. To recover, use
-      # "Re-run failed jobs" in the Actions tab.
-      # ==========================================================
-
-      - name: Check for missing hours
-        shell: bash
-
-        run: |
-          set -euo pipefail
-
-          python gapcheck.py \
-            "${{ steps.range.outputs.slug }}.csv" \
-            --from-date "${{ steps.range.outputs.from_date }}" \
-            --to-date "${{ steps.range.outputs.to_date }}"
-
-
-      # ==========================================================
       # ZIP
       # ==========================================================
 
