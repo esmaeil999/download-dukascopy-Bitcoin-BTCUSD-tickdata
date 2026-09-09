@@ -681,6 +681,7 @@ jobs:
             echo "Sending $YEAR to Telegram..."
 
 
+            TG_PROTO="https"
             TG_HOST="api.telegram.org"
 
             RESPONSE=$(curl -fsS \
@@ -688,7 +689,7 @@ jobs:
               --retry-delay 3 \
               --retry-all-errors \
               -X POST \
-              "{{https://${TG_HOST}}}/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              "${TG_PROTO}://${TG_HOST}/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
               --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
               --data-urlencode "text=${CAPTION}" \
               --data-urlencode "parse_mode=HTML" \
