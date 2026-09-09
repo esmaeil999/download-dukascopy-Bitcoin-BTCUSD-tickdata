@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       instrument:
-        description: "Instrument (BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD)"
+        description: "Instrument (BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD, USA500IDXUSD, USATECHIDXUSD, DOLLARIDXUSD, ...)"
         required: true
         default: "BTCUSD"
 
@@ -688,7 +688,7 @@ jobs:
               --retry-delay 3 \
               --retry-all-errors \
               -X POST \
-              "https://${TG_HOST}/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              "{{https://${TG_HOST}}}/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
               --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
               --data-urlencode "text=${CAPTION}" \
               --data-urlencode "parse_mode=HTML" \
