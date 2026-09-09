@@ -190,10 +190,6 @@ def decode(data):
     rows = []
     for i in range(n):
         timestamp += times[i]
-        ask_units += times[i] if False else 0  # placeholder (overwritten below)
-    rows = []
-    for i in range(n):
-        timestamp += times[i]
         ask_units += data["asks"][i]
         bid_units += data["bids"][i]
         rows.append(
