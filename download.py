@@ -9,6 +9,12 @@ it. After 24 consecutive permanent rejections the downloader switches to
 bi5-first mode and probes jetta once per day (hour 00 GMT) to notice when
 the range becomes servable again.
 
+Non-24/7 instruments (FX, metals, index/stock/commodity CFDs) close for
+the weekend (Fri 21:00 - Sun 21:00 GMT). Those hours get one cheap probe
+per feed instead of the full retry loop; data that shows up anyway is
+still used, so nothing can be lost. Hours confirmed absent on BOTH feeds
+are written to <output>.nodata, which fill_gaps.py and gapcheck.py trust.
+
 Logs are transparent: one progress line per 6-hour chunk, one line per
 bi5-served hour, and explicit lines for empty/failed hours and mode
 switches:
@@ -107,6 +113,11 @@ def parse_args():
         action="store_true",
         help="Accept empty datasets without retrying",
     )
+    parser.add_argument(
+        "--no-closure-skip",
+        action="store_true",
+        help="Probe weekend-closure hours with full retries too",
+    )
     return parser.parse_args()
 
 
@@ -146,6 +157,43 @@ def default_point(inst):
     if len(inst) > 6 and STOCK_RE.match(inst):
         return 0.01
     return None
+
+
+FIAT = {
+    "USD", "EUR", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD", "SEK", "NOK",
+    "DKK", "PLN", "CZK", "HUF", "TRY", "ZAR", "MXN", "SGD", "HKD", "CNH",
+    "ILS", "THB", "RON", "SAR", "AED",
+}
+
+
+def trades_weekends(inst):
+    """True for 24/7 instruments (crypto). FX pairs, metals, index/commodity
+    and stock CFDs all close for the weekend. Unknown instruments are
+    treated as 24/7 so nothing is ever skipped for them."""
+    if len(inst) == 6 and inst[:3] in FIAT and inst[3:] in FIAT:
+        return False  # FX pair
+    if inst.startswith(("XAU", "XAG", "XPT", "XPD")):
+        return False  # metals
+    if len(inst) > 6 and IDX_CMD_RE.match(inst):
+        return False  # index/commodity CFD
+    if len(inst) > 6 and STOCK_RE.match(inst):
+        return False  # stock CFD
+    return True
+
+
+def in_weekly_closure(inst, dt):
+    """Dukascopy weekly closure for non-24/7 instruments:
+    Friday 21:00 GMT .. Sunday 21:00 GMT."""
+    if trades_weekends(inst):
+        return False
+    wd = dt.weekday()  # Mon=0 .. Sun=6
+    if wd == 4 and dt.hour >= 21:
+        return True
+    if wd == 5:
+        return True
+    if wd == 6 and dt.hour < 21:
+        return True
+    return False
 
 
 def price_scale(multiplier):
@@ -273,13 +321,14 @@ def parse_bi5(raw, hour_dt, point):
     return rows
 
 
-def jetta_hour(url, args):
+def jetta_hour(url, args, once=False):
     """Return (kind, rows, short, detail, status).
 
     kind: ok | empty | failed. Permanent http 4xx is not retried (it cannot
     heal); transient errors and empty 200s are retried as configured.
+    once=True probes the hour exactly once (used for weekend-closure hours).
     """
-    attempts = args.retries + 1
+    attempts = 1 if once else args.retries + 1
     last_status = 0
     for a in range(attempts):
         status, body = fetch(url)
@@ -298,7 +347,7 @@ def jetta_hour(url, args):
                     except Exception as e:
                         short = f"decode: {e}"
                         return "failed", None, short, f"{short} ({a + 1} {plural(a + 1)})", status
-                if a < attempts - 1 and not args.no_retry_on_empty:
+                if not once and a < attempts - 1 and not args.no_retry_on_empty:
                     time.sleep(args.retry_pause)
                     continue
                 return "empty", None, "empty", f"empty ({a + 1} {plural(a + 1)})", status
@@ -311,14 +360,14 @@ def jetta_hour(url, args):
     return "failed", None, short, f"{short} ({attempts} {plural(attempts)})", last_status
 
 
-def bi5_hour(inst, hour_dt, point, args):
+def bi5_hour(inst, hour_dt, point, args, once=False):
     """Return (kind, rows, short, detail, status) for the classic bi5 feed."""
     rel = (
         f"{inst}/{hour_dt:%Y}/{hour_dt.month - 1:02d}/"
         f"{hour_dt:%d}/{hour_dt:%H}h_ticks.bi5"
     )
     url = f"{BI5_ROOT}/{rel}"
-    attempts = args.retries + 1
+    attempts = 1 if once else args.retries + 1
     last_short = "error"
     last_status = 0
     for a in range(attempts):
@@ -385,6 +434,9 @@ def main():
         with cond:
             muted = state["muted"]
 
+        # weekend-closure hours get one cheap probe per feed instead of the
+        # full retry loop; if data shows up anyway it is still used.
+        closed = in_weekly_closure(inst, hour_dt) and not args.no_closure_skip
         use_jetta = args.source != "bi5" and (not muted or hour_dt.hour == 0)
 
         if use_jetta:
@@ -392,9 +444,11 @@ def main():
                 f"{JETTA_ROOT}/{code}/{hour_dt:%Y}/"
                 f"{hour_dt.month}/{hour_dt.day}/{hour_dt.hour}"
             )
-            jkind, rows, jshort, jlong, jstatus = jetta_hour(url, args)
+            jkind, rows, jshort, jlong, jstatus = jetta_hour(url, args, once=closed)
             if jkind in ("ok", "empty"):
                 jevent = jkind
+            elif closed:
+                jevent = "closed"
             elif jstatus in PERMANENT:
                 jevent = "perm_fail"
             else:
@@ -404,14 +458,15 @@ def main():
                     # any real 200 response proves jetta serves this range
                     state["streak"] = 0
                     state["muted"] = False
-                elif jstatus in PERMANENT:
+                elif not closed and jstatus in PERMANENT:
                     state["streak"] += 1
                     if state["streak"] >= MUTE_AFTER:
                         state["muted"] = True
-                # transient failures leave streak/muted untouched
+                # transient failures and closed hours leave streak/muted untouched
+                muted_after = state["muted"]
             if jkind == "ok":
                 with cond:
-                    results[idx] = (hour_dt, ("ok", rows, "jetta", None, "ok"))
+                    results[idx] = (hour_dt, ("ok", rows, "jetta", None, "ok", None))
                     cond.notify_all()
                 if args.pause:
                     time.sleep(args.pause)
@@ -422,35 +477,36 @@ def main():
 
         # bi5 fallback (or bi5-only mode)
         if args.source != "jetta" and point is not None:
-            bkind, brows, bshort, blong, bstatus = bi5_hour(inst, hour_dt, point, args)
+            bkind, brows, bshort, blong, bstatus = bi5_hour(inst, hour_dt, point, args, once=closed)
+            confirmed = bkind == "empty"  # bi5 404/empty is definitive: no such hour exists
             if bkind == "ok":
                 if not use_jetta:
                     jnote = "disabled" if args.source == "bi5" else "skipped (jetta muted)"
                 else:
                     jnote = jshort
-                outcome = ("ok", brows, "bi5", jnote, jevent)
+                outcome = ("ok", brows, "bi5", jnote, jevent, None)
             elif use_jetta:
                 if bkind == "empty":
                     outcome = (
                         "empty", None, "-",
-                        f"no ticks (jetta: {jlong}, bi5: {blong})", jevent,
+                        f"no ticks (jetta: {jlong}, bi5: {blong})", jevent, confirmed,
                     )
                 else:
                     outcome = (
-                        "failed", f"jetta {jlong}; bi5 {blong}", "-", None, jevent,
+                        "failed", f"jetta {jlong}; bi5 {blong}", "-", None, jevent, False,
                     )
             else:
                 if bkind == "empty":
-                    outcome = ("empty", None, "-", f"no ticks (bi5: {blong})", jevent)
+                    outcome = ("empty", None, "-", f"no ticks (bi5: {blong})", jevent, confirmed)
                 else:
-                    outcome = ("failed", f"bi5 {blong}", "-", None, jevent)
+                    outcome = ("failed", f"bi5 {blong}", "-", None, jevent, False)
         else:
             if use_jetta and jkind == "empty":
-                outcome = ("empty", None, "jetta", None, "empty")
+                outcome = ("empty", None, "jetta", jlong, "empty", False)
             elif use_jetta:
-                outcome = ("failed", f"jetta {jlong}", "jetta", None, jevent)
+                outcome = ("failed", f"jetta {jlong}", "jetta", None, jevent, False)
             else:
-                outcome = ("failed", "jetta disabled", "jetta", None, jevent)
+                outcome = ("failed", "jetta disabled", "jetta", None, jevent, False)
 
         with cond:
             results[idx] = (hour_dt, outcome)
@@ -470,6 +526,7 @@ def main():
             chunk_start = None
             chunk_ticks = 0
             empties = []
+            nodata_keys = []
             failed = []
             src_counts = {"jetta": 0, "bi5": 0}
             bi5_active = args.source != "jetta" and point is not None
@@ -488,7 +545,7 @@ def main():
             with cond:
                 while written < total_hours:
                     cond.wait_for(lambda: written in results)
-                    hour_dt, (kind, payload, source, note, jevent) = results.pop(written)
+                    hour_dt, (kind, payload, source, note, jevent, confirmed) = results.pop(written)
 
                     # Mode-switch notes are derived here, in hour order, so
                     # worker timing can never scramble them.
@@ -528,6 +585,8 @@ def main():
                             )
                     elif kind == "empty":
                         empties.append(hour_dt)
+                        if confirmed:
+                            nodata_keys.append(f"{hour_dt:%Y-%m-%d %H}")
                         if note is None:
                             note = f"server returned no ticks ({args.retries + 1} attempts)"
                         print(
@@ -553,6 +612,16 @@ def main():
 
             if chunk_start is not None:
                 flush_chunk(end)
+
+    if nodata_keys:
+        nd_path = args.output + ".nodata"
+        with open(nd_path, "w") as f:
+            for k in sorted(set(nodata_keys)):
+                f.write(k + "\n")
+        print(
+            f"confirmed no-data hours (both feeds): {len(set(nodata_keys))} "
+            f"-> {os.path.basename(nd_path)}"
+        )
 
     duration = time.time() - t0
     print("================================")

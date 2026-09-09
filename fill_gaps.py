@@ -15,7 +15,8 @@ This script:
   5. writes a sidecar file (<csv>.nodata) listing hours that are
      confirmed absent on BOTH feeds (e.g. nights/weekends for index
      instruments). gapcheck.py reads that sidecar and does not treat
-     those hours as gaps.
+     those hours as gaps. Hours already listed there (written by
+     download.py) are trusted and not re-checked.
 
 Best-effort: hours whose download keeps failing are reported and left
 empty (and NOT written to the sidecar, so gapcheck still flags them).
@@ -325,6 +326,24 @@ def main():
         print("OK: no missing hours; nothing to fill.")
         return
 
+    # hours the downloader already confirmed as absent on both feeds are
+    # trusted and not re-checked
+    known = set()
+    sidecar_path = args.csv_path + ".nodata"
+    if os.path.exists(sidecar_path):
+        with open(sidecar_path) as f:
+            known = {line.strip() for line in f if line.strip()}
+    if known:
+        before = len(empty)
+        empty = [dt for dt in empty if hour_key(dt) not in known]
+        print(
+            f"skipping {before - len(empty)} hour(s) already confirmed "
+            f"no-data by the downloader (see {os.path.basename(sidecar_path)})"
+        )
+    if not empty:
+        print("OK: all missing hours are confirmed no-data; nothing to fill.")
+        return
+
     print(
         f"found {len(empty)} empty hour(s); checking the classic bi5 feed "
         f"with {args.workers} workers (point={args.point})..."
@@ -402,16 +421,18 @@ def main():
     if fills:
         merge(args.csv_path, fills)
 
-    if nodata:
+    all_nodata = sorted(set(nodata) | known)
+    if all_nodata:
         with open(args.csv_path + ".nodata", "w") as f:
-            for k in sorted(nodata):
+            for k in all_nodata:
                 f.write(k + "\n")
 
     total = sum(len(v) for v in fills.values())
     print(
         f"DONE: recovered {total} ticks into {len(fills)} hour(s); "
-        f"confirmed no-data on both feeds: {len(nodata)}"
-        + (f" (listed in {os.path.basename(args.csv_path)}.nodata)" if nodata else "")
+        f"confirmed no-data on both feeds: {len(all_nodata)} "
+        f"(newly checked: {len(nodata)}, pre-confirmed: {len(known)})"
+        + (f" (listed in {os.path.basename(args.csv_path)}.nodata)" if all_nodata else "")
         + f"; still unknown: {len(still)}"
     )
     if still:
