@@ -38,6 +38,21 @@ from datetime import datetime, timedelta, timezone
 
 BI5_ROOT = "https://datafeed.dukascopy.com/datafeed"
 RECORD = struct.Struct(">IIIff")  # ms offset, ask, bid, askVolume, bidVolume
+
+# Price point sizes for decoding bi5 integer prices (--point overrides).
+# bi5 stores prices as int = price / point; the point equals the smallest
+# displayed quote digit on Dukascopy (e.g. USA500.IDX quotes 7666.789 -> 0.001).
+POINTS = {
+    "BTCUSD": 0.1,
+    "XAUUSD": 0.001,
+    "EURUSD": 0.00001,
+    "GBPUSD": 0.00001,
+    "USDJPY": 0.001,
+    "DOLLARIDXUSD": 0.001,
+    "USA30IDXUSD": 0.001,
+    "USA500IDXUSD": 0.001,
+    "USATECHIDXUSD": 0.001,
+}
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -53,8 +68,8 @@ def parse_args():
     parser.add_argument(
         "--point",
         type=float,
-        default=0.1,
-        help="Price multiplier for bi5 integer prices (BTCUSD: 0.1)",
+        default=None,
+        help="Price multiplier for bi5 integer prices (default: built-in per instrument, e.g. BTCUSD=0.1, EURUSD=0.00001, indices=0.001)",
     )
     parser.add_argument(
         "--bi5-dir",
@@ -68,7 +83,10 @@ def parse_args():
         help="Max allowed deviation vs neighbouring prices (default: 0.2 = 20%%)",
     )
     parser.add_argument("--retries", type=int, default=5)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.point is None:
+        args.point = POINTS.get(args.instrument.strip().replace("/", "").upper(), 0.1)
+    return args
 
 
 def hour_key(dt):

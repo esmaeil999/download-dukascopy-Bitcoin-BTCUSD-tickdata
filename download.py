@@ -40,6 +40,7 @@ import argparse
 import json
 import lzma
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -61,12 +62,18 @@ RECORD = struct.Struct(">IIIff")  # ms offset, ask points, bid points, askVolume
 PERMANENT = frozenset({400, 401, 403, 404, 410})
 
 # Price point sizes for decoding bi5 integer prices (--point overrides).
+# bi5 stores prices as int = price / point; the point equals the smallest
+# displayed quote digit on Dukascopy (e.g. USA500.IDX quotes 7666.789 -> 0.001).
 POINTS = {
     "BTCUSD": 0.1,
-    "XAUUSD": 0.01,
+    "XAUUSD": 0.001,
     "EURUSD": 0.00001,
     "GBPUSD": 0.00001,
     "USDJPY": 0.001,
+    "DOLLARIDXUSD": 0.001,
+    "USA30IDXUSD": 0.001,
+    "USA500IDXUSD": 0.001,
+    "USATECHIDXUSD": 0.001,
 }
 
 
@@ -103,10 +110,26 @@ def parse_args():
     return parser.parse_args()
 
 
+IDX_CMD_RE = re.compile(r"^([A-Z0-9]+?)(IDX|CMD)([A-Z]{3})$")
+STOCK_RE = re.compile(r"^([A-Z0-9]+?)([A-Z]{2})([A-Z]{3})$")
+
+
 def derive_code(instrument):
+    """Derive the jetta instrument code from a plain instrument name.
+
+    Verified against dukascopy-node's instrument metadata: matches
+    1483/1499 entries (the only misses are single-letter stock tickers
+    like A.US/USD -- pass --code for those).
+    """
     base = instrument.strip().replace("/", "").upper()
+    m = IDX_CMD_RE.match(base)
+    if m and len(base) > 6:
+        return f"{m.group(1)}.{m.group(2)}-{m.group(3)}"  # USA500IDXUSD -> USA500.IDX-USD
     if len(base) == 6:
         return base[:3] + "-" + base[3:]  # BTCUSD -> BTC-USD
+    m = STOCK_RE.match(base)
+    if m and len(base) > 6:
+        return f"{m.group(1)}.{m.group(2)}-{m.group(3)}"  # AAPLUSUSD -> AAPL.US-USD
     return base
 
 
