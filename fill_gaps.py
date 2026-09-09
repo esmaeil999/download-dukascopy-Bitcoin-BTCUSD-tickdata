@@ -7,28 +7,20 @@ dataset for hours that do have data. The older bi5 feed
 
 This script:
   1. finds fully-empty hour buckets between the first and last tick
-  2. checks those hours against the bi5 feed CONCURRENTLY (LZMA,
-     20-byte records: >IIIff = ms offset, ask, bid, askVolume, bidVolume)
+  2. downloads those hours from the bi5 feed (LZMA, 20-byte records:
+     >IIIff = ms offset, ask, bid, askVolume, bidVolume)
   3. sanity-checks decoded prices against neighbouring CSV prices
      (protects against a wrong --point multiplier)
   4. merges the recovered ticks, keeping the file time-sorted
-  5. writes a sidecar file (<csv>.nodata) listing hours that are
-     confirmed absent on BOTH feeds (e.g. nights/weekends for index
-     instruments). gapcheck.py reads that sidecar and does not treat
-     those hours as gaps. Hours already listed there (written by
-     download.py) are trusted and not re-checked.
 
-Best-effort: hours whose download keeps failing are reported and left
-empty (and NOT written to the sidecar, so gapcheck still flags them).
-Hours that fail the first (concurrent) pass get one slow, sequential
-second pass with longer pauses before being given up on.
+Best-effort: hours that cannot be recovered are reported and left empty;
+gapcheck.py afterwards decides whether the final result is acceptable.
 
 Downloads use curl with a browser User-Agent: the bi5 feed rejects or
 mis-serves default scripting clients.
 
 Usage:
-    python fill_gaps.py ticks.csv --instrument BTCUSD
-    python fill_gaps.py ticks.csv --instrument USA500IDXUSD --workers 12
+    python fill_gaps.py ticks.csv --instrument BTCUSD [--point 0.1]
     python fill_gaps.py ticks.csv --instrument BTCUSD --bi5-dir ./cache  # offline/testing
 """
 
@@ -36,17 +28,15 @@ import argparse
 import csv
 import lzma
 import os
-import re
 import statistics
 import struct
 import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-BI5_ROOT = os.environ.get("BI5_ROOT", "https://datafeed.dukascopy.com/datafeed")
+BI5_ROOT = "https://datafeed.dukascopy.com/datafeed"
 RECORD = struct.Struct(">IIIff")  # ms offset, ask, bid, askVolume, bidVolume
 
 # Price point sizes for decoding bi5 integer prices (--point overrides).
@@ -63,26 +53,6 @@ POINTS = {
     "USA500IDXUSD": 0.001,
     "USATECHIDXUSD": 0.001,
 }
-
-IDX_CMD_RE = re.compile(r"^([A-Z0-9]+?)(IDX|CMD)([A-Z]{3})$")
-STOCK_RE = re.compile(r"^([A-Z0-9]+?)([A-Z]{2})([A-Z]{3})$")
-
-
-def default_point(inst):
-    """bi5 price point: explicit map, then rules (index/commodity CFDs
-    quote 3 decimals, JPY pairs 3, other 6-letter FX pairs 5, stock
-    CFDs 2). None when unknown."""
-    if inst in POINTS:
-        return POINTS[inst]
-    if len(inst) > 6 and IDX_CMD_RE.match(inst):
-        return 0.001
-    if len(inst) == 6:
-        return 0.001 if inst.endswith("JPY") else 0.00001
-    if len(inst) > 6 and STOCK_RE.match(inst):
-        return 0.01
-    return None
-
-
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -113,19 +83,9 @@ def parse_args():
         help="Max allowed deviation vs neighbouring prices (default: 0.2 = 20%%)",
     )
     parser.add_argument("--retries", type=int, default=5)
-    parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument(
-        "--retry-pause", type=float, default=3.0, help="Seconds between retries"
-    )
     args = parser.parse_args()
     if args.point is None:
-        args.point = default_point(args.instrument.strip().replace("/", "").upper())
-    if args.point is None:
-        print(
-            f"WARNING: no known point size for {args.instrument}; "
-            "falling back to 0.1 (the sanity check may reject fills)"
-        )
-        args.point = 0.1
+        args.point = POINTS.get(args.instrument.strip().replace("/", "").upper(), 0.1)
     return args
 
 
@@ -185,11 +145,7 @@ def find_empty_hours(present, min_key, max_key):
 
 
 def download(url, retries, pause=3):
-    """Return (bytes|None, status): status is 'ok' | 'nodata' | 'error'.
-
-    404 (and 200 with empty body) is definitive: the feed has no such hour.
-    Other statuses are retried; exhausting them yields 'error' (unknown).
-    """
+    """Download with curl + browser UA; return bytes or None."""
     for attempt in range(retries):
         fd, tmp = tempfile.mkstemp()
         os.close(fd)
@@ -206,9 +162,9 @@ def download(url, retries, pause=3):
             if status == 200:
                 with open(tmp, "rb") as f:
                     data = f.read()
-                return (data, "ok") if data else (None, "nodata")
+                return data if data else None
             if status == 404:
-                return None, "nodata"
+                return None
         except Exception:
             pass
         finally:
@@ -218,24 +174,18 @@ def download(url, retries, pause=3):
                 pass
         if attempt < retries - 1:
             time.sleep(pause)
-    return None, "error"
+    return None
 
 
-def fetch_bi5(inst, dt, args, retries=None, pause=None):
-    """Return (bytes|None, status): 'ok' | 'nodata' | 'error'."""
+def fetch_bi5(inst, dt, args):
     rel = f"{inst}/{dt:%Y}/{dt.month - 1:02d}/{dt:%d}/{dt:%H}h_ticks.bi5"
     if args.bi5_dir:
         try:
             with open(os.path.join(args.bi5_dir, rel), "rb") as f:
-                data = f.read()
-            return (data, "ok") if data else (None, "nodata")
+                return f.read()
         except OSError:
-            return None, "nodata"
-    return download(
-        f"{BI5_ROOT}/{rel}",
-        retries if retries is not None else args.retries,
-        pause if pause is not None else args.retry_pause,
-    )
+            return None
+    return download(f"{BI5_ROOT}/{rel}", args.retries)
 
 
 def decode_bi5(blob):
@@ -326,118 +276,49 @@ def main():
         print("OK: no missing hours; nothing to fill.")
         return
 
-    # hours the downloader already confirmed as absent on both feeds are
-    # trusted and not re-checked
-    known = set()
-    sidecar_path = args.csv_path + ".nodata"
-    if os.path.exists(sidecar_path):
-        with open(sidecar_path) as f:
-            known = {line.strip() for line in f if line.strip()}
-    if known:
-        before = len(empty)
-        empty = [dt for dt in empty if hour_key(dt) not in known]
-        print(
-            f"skipping {before - len(empty)} hour(s) already confirmed "
-            f"no-data by the downloader (see {os.path.basename(sidecar_path)})"
-        )
-    if not empty:
-        print("OK: all missing hours are confirmed no-data; nothing to fill.")
-        return
-
-    print(
-        f"found {len(empty)} empty hour(s); checking the classic bi5 feed "
-        f"with {args.workers} workers (point={args.point})..."
-    )
-
-    def work(dt, retries=None, pause=None):
-        blob, status = fetch_bi5(inst, dt, args, retries, pause)
-        if status != "ok":
-            return (dt, status, None)
-        raw = decode_bi5(blob)
-        if raw is None:
-            return (dt, "error", None)  # downloaded but undecodable: unknown
-        ticks = parse_ticks(raw, dt, args.point)
-        if not ticks:
-            return (dt, "nodata", None)
-        before, after = neighbor_prices(present, dt)
-        if not prices_sane(ticks, before, after, args.max_deviation):
-            return (dt, "insane", None)
-        return (dt, "ok", ticks)
+    print(f"found {len(empty)} empty hour(s); trying classic bi5 feed...")
 
     fills = {}
-    nodata = []  # confirmed absent on BOTH feeds -> sidecar for gapcheck
-    errors = []  # fetch/decode failure -> retried in a slow second pass
-    insane = []  # decoded but rejected by the neighbour sanity check
-
-    def classify(dt, status, ticks):
+    still = []
+    for dt in empty:
         key = hour_key(dt)
-        if status == "ok":
-            fills[key] = [
-                f"{fmt_ts(ms)},{fmt_num(bid)},{fmt_num(ask)},"
-                f"{fmt_num(bv)},{fmt_num(av)}"
-                for ms, bid, ask, bv, av in ticks
-            ]
-            print(f"  {key}: recovered {len(ticks)} ticks from bi5")
-        elif status == "nodata":
-            nodata.append(key)
-        elif status == "insane":
+        blob = fetch_bi5(inst, dt, args)
+        if not blob:
+            print(f"  {key}: bi5 not available")
+            still.append(key)
+            continue
+        raw = decode_bi5(blob)
+        if raw is None:
+            print(f"  {key}: bi5 download could not be decoded")
+            still.append(key)
+            continue
+        ticks = parse_ticks(raw, dt, args.point)
+        before, after = neighbor_prices(present, dt)
+        if not prices_sane(ticks, before, after, args.max_deviation):
             print(
                 f"  {key}: sanity check FAILED (median price far from "
-                f"neighbours; wrong point?) - skipped"
+                f"neighbours; wrong --point?) - skipped"
             )
-            insane.append(key)
-        else:
-            errors.append(dt)
-
-    done = 0
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        for dt, status, ticks in pool.map(work, empty):
-            done += 1
-            classify(dt, status, ticks)
-            if done % 250 == 0:
-                print(
-                    f"  ... checked {done}/{len(empty)} hours "
-                    f"(recovered {len(fills)}, no-data {len(nodata)}, failed {len(errors)})"
-                )
-
-    # slow second pass for hours whose download failed (transient 5xx etc.)
-    if errors:
-        print(
-            f"slow pass: retrying {len(errors)} hour(s) that failed to "
-            "download (3 attempts, longer pauses)..."
-        )
-        remaining = []
-        for dt in errors:
-            dt2, status, ticks = work(dt, retries=3, pause=args.retry_pause * 4)
-            if status == "error":
-                print(f"  {hour_key(dt2)}: bi5 unavailable after slow pass too")
-                remaining.append(dt2)
-            else:
-                classify(dt2, status, ticks)
-        errors = remaining
-
-    still = [hour_key(dt) for dt in errors] + insane
+            still.append(key)
+            continue
+        fills[key] = [
+            f"{fmt_ts(ms)},{fmt_num(bid)},{fmt_num(ask)},{fmt_num(bv)},{fmt_num(av)}"
+            for ms, bid, ask, bv, av in ticks
+        ]
+        print(f"  {key}: recovered {len(ticks)} ticks from bi5")
+        if not args.bi5_dir:
+            time.sleep(0.3)  # be polite to the server
 
     if fills:
         merge(args.csv_path, fills)
 
-    all_nodata = sorted(set(nodata) | known)
-    if all_nodata:
-        with open(args.csv_path + ".nodata", "w") as f:
-            for k in all_nodata:
-                f.write(k + "\n")
-
     total = sum(len(v) for v in fills.values())
     print(
         f"DONE: recovered {total} ticks into {len(fills)} hour(s); "
-        f"confirmed no-data on both feeds: {len(all_nodata)} "
-        f"(newly checked: {len(nodata)}, pre-confirmed: {len(known)})"
-        + (f" (listed in {os.path.basename(args.csv_path)}.nodata)" if all_nodata else "")
-        + f"; still unknown: {len(still)}"
+        f"still empty: {len(still)}"
     )
     if still:
-        shown = ", ".join(still[:50])
-        print("still unknown: " + shown + (" ..." if len(still) > 50 else ""))
+        print("still empty: " + ", ".join(still))
 
 
 if __name__ == "__main__":
