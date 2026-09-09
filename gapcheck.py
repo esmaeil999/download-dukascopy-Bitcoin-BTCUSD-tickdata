@@ -12,6 +12,9 @@ JForex-style CSV (GmtTime,Bid,Ask,BidVolume,AskVolume) and:
   instrument may simply have no data that far back
 - the last --trailing-grace-hours of the expected range are tolerated
   (the feed may lag for very recent dates)
+- hours listed in an optional <csv>.nodata sidecar (written by
+  fill_gaps.py) are confirmed absent on BOTH feeds and are excluded
+  instead of being treated as gaps (e.g. nights/weekends of index CFDs)
 
 Usage:
     python gapcheck.py ticks.csv --from-date 2025-01-01 --to-date 2026-01-01
@@ -19,6 +22,7 @@ Usage:
 
 import argparse
 import csv
+import os
 import sys
 from datetime import datetime, timedelta
 
@@ -86,7 +90,7 @@ def main():
     data_start = datetime.strptime(min_key, "%Y-%m-%d %H")
     data_end = datetime.strptime(max_key, "%Y-%m-%d %H")
 
-    # (start, end, threshold_applies) tuples
+    # (start, end, fails) tuples; `fails` means the threshold applies
     runs = []
 
     # ---- leading gap (expected start .. first tick): warning only
@@ -95,11 +99,26 @@ def main():
         if exp_start < data_start:
             runs.append((exp_start, data_start - timedelta(hours=1), False))
 
+    # ---- sidecar from fill_gaps.py: hours confirmed absent on both feeds
+    nodata = set()
+    sidecar = args.csv_path + ".nodata"
+    if os.path.exists(sidecar):
+        with open(sidecar) as f:
+            for line in f:
+                k = line.strip()
+                if k:
+                    nodata.add(k)
+        print(
+            f"excluding {len(nodata)} confirmed no-data hour(s) "
+            f"listed in {os.path.basename(sidecar)}"
+        )
+
     # ---- gaps inside the data range: threshold applies
     empty = []
     h = data_start
     while h <= data_end:
-        if hour_key(h) not in present:
+        k = hour_key(h)
+        if k not in present and k not in nodata:
             empty.append(h)
         h += timedelta(hours=1)
 
@@ -126,8 +145,8 @@ def main():
     total_hours = int((data_end - data_start).total_seconds() // 3600) + 1
     empty_in_range = sum(
         int((e - s).total_seconds() // 3600) + 1
-        for s, e, threshold_applies in runs
-        if threshold_applies and s <= data_end and e >= data_start
+        for s, e, fails in runs
+        if fails and s <= data_end and e >= data_start
     )
     print(
         f"rows={rows} data_range={min_key}:00..{max_key}:59 "
