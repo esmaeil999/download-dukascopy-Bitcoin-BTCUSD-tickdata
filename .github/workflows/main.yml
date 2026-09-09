@@ -109,7 +109,6 @@ jobs:
           echo "================================"
           echo "Instrument: $INSTRUMENT"
           echo "Dukascopy symbol: $INSTRUMENT_LOWER"
-          echo "Overall From: $OVERALL_FROM" >> /dev/null
           echo "Overall From: $FROM_DATE"
           echo "Overall To:   $TO_DATE"
           echo "Years: $YEARS"
